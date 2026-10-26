@@ -2156,6 +2156,18 @@ mwx_preinit(struct mwx_softc *sc)
 
 	ieee80211_media_init(ifp);
 
+	/*
+	 * net80211 only switches 11n on by default; 11ac has to be
+	 * requested explicitly.  Without this flag ieee80211_vht_negotiate()
+	 * returns early and the link stays at HT rates (and at most 40 MHz)
+	 * even when both the AP and the card support VHT, which is the
+	 * single biggest throughput limitation.  The channels have been
+	 * filled in by ieee80211_channel_init() above, so the 11AC mode is
+	 * now present in ic_modecaps.
+	 */
+	if (ic->ic_modecaps & (1 << IEEE80211_MODE_11AC))
+		ic->ic_flags |= IEEE80211_F_VHTON;
+
 	DPRINTF("%s: preinit done\n", DEVNAME(sc));
 	return 0;
 }
@@ -7619,6 +7631,43 @@ mwx_tx_is_eapol(struct mbuf *m, u_int hdrlen)
 	    llc[7] == (ETHERTYPE_PAE & 0xff);
 }
 
+/*
+ * TID to put in MT_TXD1_TID for frames that do not carry a QoS Control
+ * field: compressed Block Ack Requests and ADDBA Request action frames.
+ * Returns -1 when the frame is neither, otherwise the TID is returned
+ * and *is_addba is set for an ADDBA Request.
+ */
+static int
+mwx_tx_ba_tid(struct mbuf *m, u_int hdrlen, int *is_addba)
+{
+	struct ieee80211_frame *wh = mtod(m, struct ieee80211_frame *);
+	const uint8_t *frm = (const uint8_t *)wh + hdrlen;
+	uint16_t ctl;
+
+	*is_addba = 0;
+
+	if ((wh->i_fc[0] & IEEE80211_FC0_TYPE_MASK) ==
+	    IEEE80211_FC0_TYPE_CTL) {
+		if ((wh->i_fc[0] & IEEE80211_FC0_SUBTYPE_MASK) !=
+		    IEEE80211_FC0_SUBTYPE_BAR || mbuf_len(m) < hdrlen + 2)
+			return -1;
+		ctl = frm[0] | (frm[1] << 8);
+		return (ctl >> IEEE80211_BA_TID_INFO_SHIFT) & 0xf;
+	}
+
+	if ((wh->i_fc[0] & IEEE80211_FC0_TYPE_MASK) !=
+	    IEEE80211_FC0_TYPE_MGT ||
+	    (wh->i_fc[0] & IEEE80211_FC0_SUBTYPE_MASK) !=
+	    IEEE80211_FC0_SUBTYPE_ACTION || mbuf_len(m) < hdrlen + 5)
+		return -1;
+	if (frm[0] != IEEE80211_CATEG_BA || frm[1] != IEEE80211_ACTION_ADDBA_REQ)
+		return -1;
+
+	*is_addba = 1;
+	ctl = frm[3] | (frm[4] << 8);
+	return (ctl & IEEE80211_ADDBA_TID_MASK) >> IEEE80211_ADDBA_TID_SHIFT;
+}
+
 void
 mt7921_mac_write_txwi_80211(struct mwx_softc *sc, struct mbuf *m,
     struct ieee80211_node *ni, struct mt76_txwi *txp)
@@ -7627,7 +7676,7 @@ mt7921_mac_write_txwi_80211(struct mwx_softc *sc, struct mbuf *m,
 	uint32_t val;
 	uint8_t type, subtype, tid = 0;
 	u_int hdrlen;
-	int multicast, eapol;
+	int multicast, eapol, addba, ba_tid;
 
 
 	wh = mtod(m, struct ieee80211_frame *);
@@ -7651,21 +7700,16 @@ mt7921_mac_write_txwi_80211(struct mwx_softc *sc, struct mbuf *m,
 		tid = qos & IEEE80211_QOS_TID;
 	}
 
-#ifdef NOTYET
-	if (ieee80211_is_action(fc) &&
-	    mgmt->u.action.category == WLAN_CATEGORY_BACK &&
-	    mgmt->u.action.u.addba_req.action_code == WLAN_ACTION_ADDBA_REQ) {
-		u16 capab = le16_to_cpu(mgmt->u.action.u.addba_req.capab);
-
+	/*
+	 * ADDBA Request frames must be marked as such and carry the TID of
+	 * the agreement; a compressed BAR carries its TID in the BAR
+	 * control field instead of a QoS Control field.
+	 */
+	ba_tid = mwx_tx_ba_tid(m, hdrlen, &addba);
+	if (ba_tid >= 0)
+		tid = ba_tid;
+	if (addba)
 		txp->txwi[5] |= htole32(MT_TXD5_ADD_BA);
-		tid = (capab >> 2) & IEEE80211_QOS_CTL_TID_MASK;
-	} else if (ieee80211_is_back_req(hdr->frame_control)) {
-		struct ieee80211_bar *bar = (struct ieee80211_bar *)hdr;
-		u16 control = le16_to_cpu(bar->control);
-
-		tid = FIELD_GET(IEEE80211_BAR_CTRL_TID_INFO_MASK, control);
-	}
-#endif
 
 	val = MT_HDR_FORMAT_802_11 | MT_TXD1_HDR_INFO(hdrlen / 2) |
 	    MT_TXD1_TID(tid);
@@ -7870,7 +7914,7 @@ mt7925_mac_write_txwi_80211(struct mwx_softc *sc, struct mbuf *m,
 	uint32_t val;
 	uint8_t type, subtype, tid = 0;
 	u_int hdrlen;
-	int multicast, eapol;
+	int multicast, eapol, addba, ba_tid;
 
 	wh = mtod(m, struct ieee80211_frame *);
 	type = wh->i_fc[0] & IEEE80211_FC0_TYPE_MASK;
@@ -7890,9 +7934,15 @@ mt7925_mac_write_txwi_80211(struct mwx_softc *sc, struct mbuf *m,
 		uint16_t qos = ieee80211_get_qos(wh);
 
 		tid = qos & IEEE80211_QOS_TID;
-	} else if (type == IEEE80211_FC0_TYPE_MGT) {
-		tid = 0;
 	}
+
+	ba_tid = mwx_tx_ba_tid(m, hdrlen, &addba);
+	if (addba)
+		tid = MT_TX_ADDBA;
+	else if (ba_tid >= 0)
+		tid = ba_tid;
+	else if (type == IEEE80211_FC0_TYPE_MGT)
+		tid = MT_TX_NORMAL;
 
 	val = MT7925_HDR_FORMAT_802_11 | MT7925_TXD1_HDR_INFO(hdrlen / 2) |
 	    MT7925_TXD1_TID(tid);
@@ -8556,6 +8606,47 @@ mwx_sta_rec_state(struct ieee80211_node *ni)
 	return MT76_STA_INFO_STATE_NONE;
 }
 
+/*
+ * VHT Operating Mode Notification value for STA_REC_STATE.
+ *
+ * Bits 0-1 are the channel width and bits 4-6 the number of spatial
+ * streams, using the same encoding as the VHT Operating Mode field:
+ * 0 = 20 MHz, 1 = 40 MHz, 2 = 80 MHz, 3 = 160 MHz, and NSS - 1.
+ * net80211 stores the negotiated width in ni_chw (which also covers the
+ * 40 MHz case that ieee80211_node_vht_channel_width() reports as "use
+ * HT") and the negotiated stream count in ni_rx_nss.
+ */
+static uint8_t
+mwx_vht_opmode(struct ieee80211_node *ni)
+{
+	uint8_t nss, opmode;
+
+	switch (ni->ni_chw) {
+	case IEEE80211_CHAN_WIDTH_40:
+		opmode = 1;
+		break;
+	case IEEE80211_CHAN_WIDTH_80:
+		opmode = 2;
+		break;
+	case IEEE80211_CHAN_WIDTH_160:
+	case IEEE80211_CHAN_WIDTH_80P80:
+		opmode = 3;
+		break;
+	default:
+		opmode = 0;
+		break;
+	}
+
+	nss = ni->ni_rx_nss;
+	if (nss < 1)
+		nss = 1;
+	else if (nss > IEEE80211_VHT_NUM_SS)
+		nss = IEEE80211_VHT_NUM_SS;
+	opmode |= (nss - 1) << 4;
+
+	return opmode;
+}
+
 void
 mt7921_mcu_add_basic_tlv(struct mbuf *m, uint16_t *tlvnum, struct mwx_softc *sc,
     struct ieee80211_node *ni, int add, int newsta)
@@ -8656,12 +8747,16 @@ mt7921_mcu_add_sta_tlv(struct mbuf *m, uint16_t *tlvnum, struct mwx_softc *sc,
 	 */
 	phy->basic_rate = htole16(0x0150); /* XXX */
 	phy->phy_type = mt7921_get_phy_mode_v2(sc, ni);
-#ifdef NOTYET
-	phy->ampdu = FIELD_PREP(IEEE80211_HT_AMPDU_PARM_FACTOR,
-	    sta->deflink.ht_cap.ampdu_factor) |
-	    FIELD_PREP(IEEE80211_HT_AMPDU_PARM_DENSITY,
-	    sta->deflink.ht_cap.ampdu_density);
-#endif
+	/*
+	 * A-MPDU Parameters of the peer: maximum A-MPDU length exponent in
+	 * bits 0-1 and minimum MPDU start spacing in bits 2-4.  net80211
+	 * keeps the raw field from the AP's HT capabilities in
+	 * ni_ampdu_param, so it can be copied as-is.  The firmware uses it
+	 * to size aggregates for this peer; leaving it zero caps every
+	 * aggregate at 8 KB (and at the shortest spacing).
+	 */
+	if (ni != NULL)
+		phy->ampdu = ni->ni_ampdu_param;
 	// XXX phy->rcpi = rssi_to_rcpi(-ewma_rssi_read(&sc->sc_vif.rssi));
 	phy->rcpi = 0xdc;	/* XXX STOLEN FROM LINUX DUMP */
 
@@ -8685,27 +8780,8 @@ mt7921_mcu_add_sta_tlv(struct mbuf *m, uint16_t *tlvnum, struct mwx_softc *sc,
 
 	state = (struct sta_rec_state *)mwx_append_tlv(m, tlvnum, STA_REC_STATE, sizeof(*state));
 	state->state = mwx_sta_rec_state(ni);
-	if (ni != NULL && ieee80211_node_supports_vht(ni)) {
-		uint8_t width = ieee80211_node_vht_channel_width(ni);
-		uint8_t opmode = 0;
-
-		switch (width) {
-		case IEEE80211_VHTOP0_CHAN_WIDTH_80:
-			opmode = 2;
-			break;
-		case IEEE80211_VHTOP0_CHAN_WIDTH_160:
-		case IEEE80211_VHTOP0_CHAN_WIDTH_8080:
-			opmode = 3;
-			break;
-		default:
-			opmode = 0;	/* 20/40 MHz */
-			break;
-		}
-		/* Operating Mode Notification: RX NSS in bits 4-6. */
-		if (ni->ni_vht_ss > 1)
-			opmode |= (ni->ni_vht_ss - 1) << 4;
-		state->vht_opmode = opmode;
-	}
+	if (ni != NULL && ieee80211_node_supports_vht(ni))
+		state->vht_opmode = mwx_vht_opmode(ni);
 }
 
 int
@@ -8766,15 +8842,53 @@ int
 mt7921_mcu_wtbl_ht_tlv(struct mbuf *m, uint16_t *tlvnum,
     struct mwx_softc *sc, struct ieee80211_node *ni)
 {
+	struct wtbl_ht *ht = NULL;
 	struct wtbl_smps *smps;
+	int len = 0;
 
-	/* XXX lots missing here */
+	/*
+	 * Without these two records the firmware has no idea that the peer
+	 * is HT/VHT capable, so its WTBL rate table stays at legacy rates no
+	 * matter what STA_REC_PHY and STA_REC_RA advertise.  This mirrors
+	 * mt76_connac_mcu_wtbl_ht_tlv() in Linux.
+	 */
+	if (ieee80211_node_supports_ht(ni)) {
+		ht = (struct wtbl_ht *)mwx_append_tlv(m, tlvnum, WTBL_HT,
+		    sizeof(*ht));
+		ht->ht = 1;
+		ht->af = ni->ni_ampdu_param &
+		    IEEE80211_HT_AMPDU_PARM_FACTOR;
+		ht->mm = (ni->ni_ampdu_param &
+		    IEEE80211_HT_AMPDU_PARM_DENSITY) >>
+		    IEEE80211_HT_AMPDU_PARM_DENSITY_SHIFT;
+		len += sizeof(*ht);
+	}
+
+	if (ieee80211_node_supports_vht(ni)) {
+		struct wtbl_vht *vht;
+		uint8_t af;
+
+		vht = (struct wtbl_vht *)mwx_append_tlv(m, tlvnum, WTBL_VHT,
+		    sizeof(*vht));
+		vht->vht = 1;
+		len += sizeof(*vht);
+
+		/*
+		 * The WTBL HT record carries the A-MPDU length exponent for
+		 * both HT and VHT, so take the larger of the two values.
+		 */
+		af = (ni->ni_vhtcaps &
+		    IEEE80211_VHTCAP_MAX_A_MPDU_LENGTH_EXPONENT_MASK) >>
+		    IEEE80211_VHTCAP_MAX_A_MPDU_LENGTH_EXPONENT_SHIFT;
+		if (ht != NULL && af > ht->af)
+			ht->af = af;
+	}
 
 	smps = (struct wtbl_smps *)mwx_append_tlv(m, tlvnum, WTBL_SMPS, sizeof(*smps));
 	/* spatial multiplexing power save mode, off for now */
 	//smps->smps = (sta->deflink.smps_mode == IEEE80211_SMPS_DYNAMIC);
 
-	return sizeof(*smps);
+	return len + sizeof(*smps);
 }
 
 int
@@ -8880,6 +8994,7 @@ mt7925_mac_sta_update(struct mwx_softc *sc, struct ieee80211_node *ni,
 	else
 		phy->basic_rate = htole16((1 << 6) | (1 << 8) | (1 << 10));
 	phy->phy_type = mt7921_get_phy_mode_v2(sc, ni);
+	phy->ampdu = ni->ni_ampdu_param;
 	phy->rcpi = 0xdc;
 
 	if (IEEE80211_IS_CHAN_2GHZ(ni->ni_chan))
@@ -8897,26 +9012,8 @@ mt7925_mac_sta_update(struct mwx_softc *sc, struct ieee80211_node *ni,
 	state = (typeof(state))mwx_append_tlv(m, &tlvnum, STA_REC_STATE,
 	    sizeof(*state));
 	state->state = mwx_sta_rec_state(ni);
-	if (ieee80211_node_supports_vht(ni)) {
-		uint8_t width = ieee80211_node_vht_channel_width(ni);
-		uint8_t opmode = 0;
-
-		switch (width) {
-		case IEEE80211_VHTOP0_CHAN_WIDTH_80:
-			opmode = 2;
-			break;
-		case IEEE80211_VHTOP0_CHAN_WIDTH_160:
-		case IEEE80211_VHTOP0_CHAN_WIDTH_8080:
-			opmode = 3;
-			break;
-		default:
-			opmode = 0;
-			break;
-		}
-		if (ni->ni_vht_ss > 1)
-			opmode |= (ni->ni_vht_ss - 1) << 4;
-		state->vht_opmode = opmode;
-	}
+	if (ieee80211_node_supports_vht(ni))
+		state->vht_opmode = mwx_vht_opmode(ni);
 
 	hdr_trans = (struct sta_rec_hdr_trans *)mwx_append_tlv(m, &tlvnum, STA_REC_HDR_TRANS,
 	    sizeof(*hdr_trans));

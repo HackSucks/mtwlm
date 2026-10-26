@@ -215,6 +215,11 @@ atomic_clearbits_int(volatile u_int *p, u_int v)
 #define	IEEE80211_VHTCAP_MAX_AMPDU_LEN_32K	2
 #define	IEEE80211_VHTCAP_MAX_AMPDU_LEN_64K	3
 
+/* HT A-MPDU Parameters field (IEEE 802.11-2020 9.4.2.57.3). */
+#define	IEEE80211_HT_AMPDU_PARM_FACTOR		0x03
+#define	IEEE80211_HT_AMPDU_PARM_DENSITY		0x1c
+#define	IEEE80211_HT_AMPDU_PARM_DENSITY_SHIFT	2
+
 /* VHT MCS map helpers. */
 #ifndef IEEE80211_VHT_MCS_FOR_SS_SHIFT
 #define	IEEE80211_VHT_MCS_FOR_SS_SHIFT(n)	(2 * ((n) - 1))

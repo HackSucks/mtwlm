@@ -880,6 +880,9 @@ struct mt76_txwi {
 #define	MT7925_TXD1_OWN_MAC(x)		(((x) << 25) & MT7925_TXD1_OWN_MAC_MASK)
 #define	MT7925_TXD1_TID_MASK			0x01e00000
 #define	MT7925_TXD1_TID(x)		(((x) << 21) & MT7925_TXD1_TID_MASK)
+/* Values for MT7925_TXD1_TID; see enum tx_mgnt_type in mt76. */
+#define	MT_TX_NORMAL				0
+#define	MT_TX_ADDBA				2
 #define	MT7925_TXD1_BIP				(1U << 24)
 #define	MT7925_TXD1_ETH_802_3			(1U << 20)
 #define	MT7925_TXD1_HDR_INFO_MASK		0x001f0000
@@ -1679,6 +1682,28 @@ struct wtbl_rx {
 	uint8_t		rca1;
 	uint8_t		rca2;
 	uint8_t		rv;
+	uint8_t		rsv[4];
+} __packed;
+
+#define	WTBL_HT				0x02
+struct wtbl_ht {
+	uint16_t	tag;
+	uint16_t	len;
+	uint8_t		ht;
+	uint8_t		ldpc;
+	uint8_t		af;
+	uint8_t		mm;
+	uint8_t		rsv[4];
+} __packed;
+
+#define	WTBL_VHT			0x03
+struct wtbl_vht {
+	uint16_t	tag;
+	uint16_t	len;
+	uint8_t		ldpc;
+	uint8_t		dyn_bw;
+	uint8_t		vht;
+	uint8_t		txop_ps;
 	uint8_t		rsv[4];
 } __packed;
 
