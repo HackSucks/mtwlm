@@ -1,10 +1,11 @@
-# Build products
+# Build products and release archives
 build/
 *.kext/
 *.dSYM/
 *.o
 *.d
 *.a
+*.zip
 
 # macOS noise
 .DS_Store

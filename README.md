@@ -25,11 +25,16 @@ helper.
 
 ## Download
 
-Grab `AirportMtwlm.kext` from the
-[latest release](https://github.com/HackSucks/mtwlm/releases/latest).
+Grab the bundle from the
+[latest release](https://github.com/HackSucks/mtwlm/releases/latest):
 
-The uploaded bundle is an x86_64 build made with Xcode 15.4. It should
-work from Big Sur through Sonoma; I have not tested Sequoia or Tahoe.
+| Asset | macOS |
+|-------|-------|
+| `AirportMtwlm-1.0.0-classic.zip` | Big Sur – Ventura |
+| `AirportMtwlm-1.0.0-sonoma.zip` | Sonoma 14 and newer |
+
+Both are x86_64 builds made with Xcode 15.4. They should work from Big
+Sur through Sonoma; I have not tested Sequoia or Tahoe.
 
 ## Installation (OpenCore)
 
@@ -53,6 +58,33 @@ OpenCore injection does not require an Apple-signed kext, but a boot
 policy that forbids third-party code will still block it. If the kext
 never shows up in `kmutil showloaded`, check `csr-active-config` and
 `SecureBootModel`.
+
+## FAQ
+
+**Q: My network does not show up.**
+Turn the Wi-Fi toggle off and on from the menu bar. Also make sure the
+network is 2.4 GHz or 5 GHz — 6 GHz is not supported.
+
+**Q: I am connected but no network traffic works.**
+This is a transient DHCP bug in the current bring-up code. Restart the
+machine and it will work again.
+
+**Q: The Wi-Fi menu does not refresh its network list.**
+Known limitation: while associated, cache scans requested by `airportd`
+are refused. Turn Wi-Fi off and on, or disconnect, to refresh the list.
+
+**Q: The card does not appear at all.**
+Check that the kext is injected in OpenCore and that exactly one copy is
+present. `kmutil showloaded --list-only | grep -i mtwlm` should list it;
+if it does not, check your boot policy (`SecureBootModel` and
+`csr-active-config`).
+
+**Q: Throughput is lower than the link rate.**
+TX aggregation (A-MPDU) is still disabled, so this is expected for now.
+
+**Q: Does this work on Sequoia or Tahoe?**
+The uploaded builds were made with Xcode 15.4 and are expected to work
+from Big Sur through Sonoma. Sequoia and Tahoe are untested.
 
 ## Building
 
