@@ -18,7 +18,18 @@
 
 #include "ItlMwx.hpp"
 
+#include <libkern/version.h>
 #include <net80211/ieee80211_var.h>
+
+#ifndef MTWLM_VERSION
+#define MTWLM_VERSION "unknown"
+#endif
+
+#ifdef IO80211FAMILY_V2
+#define MTWLM_BACKEND "V2"
+#else
+#define MTWLM_BACKEND "V1"
+#endif
 
 extern ItlMwx *g_mwx_service;
 
@@ -26,9 +37,69 @@ extern ItlMwx *g_mwx_service;
 #define super ItlHalService
 OSDefineMetaClassAndStructors(ItlMwx, ItlHalService)
 
+/*
+ * Print the release banner once at driver init.  version_major/version_minor
+ * are the running kernel's Darwin version, not the SDK's; the marketing
+ * names are mapped from the major number because the two schemes diverged
+ * at macOS 26 (Tahoe, Darwin 25).
+ */
+static void
+itl_mwx_print_banner(void)
+{
+    static bool printed;
+    static const struct {
+        int darwin;
+        int macos;
+        const char *name;
+    } versions[] = {
+        { 20, 11, "Big Sur" },
+        { 21, 12, "Monterey" },
+        { 22, 13, "Ventura" },
+        { 23, 14, "Sonoma" },
+        { 24, 15, "Sequoia" },
+        { 25, 26, "Tahoe" },
+    };
+    const char *name = NULL;
+    int macos = 0;
+    size_t i;
+
+    if (printed)
+        return;
+    printed = true;
+
+    for (i = 0; i < sizeof(versions) / sizeof(versions[0]); i++) {
+        if (versions[i].darwin == version_major) {
+            name = versions[i].name;
+            macos = versions[i].macos;
+            break;
+        }
+    }
+
+    IOLog("============================================================\n");
+    if (name != NULL)
+        IOLog("mtwlm version %s, AirportMtwlm mode, backend %s running on "
+            "macOS %d %s (Darwin %d.%d).\n", MTWLM_VERSION, MTWLM_BACKEND,
+            macos, name, version_major, version_minor);
+    else
+        IOLog("mtwlm version %s, AirportMtwlm mode, backend %s running on "
+            "Darwin %d.%d.\n", MTWLM_VERSION, MTWLM_BACKEND,
+            version_major, version_minor);
+    IOLog("This is free software, provided for you online on the matching "
+        "online\n");
+    IOLog("repository, along with a complete copy of the source code used to "
+        "build\n");
+    IOLog("the program binary. If you have paid money for this, you have been\n");
+    IOLog("scammed. Made with <3 by NVMe, credits to OpenBSD mwx(4), itlwm, "
+        "and\n");
+    IOLog("Acidanthera MacKernelSDK.\n");
+    IOLog("============================================================\n");
+}
+
 bool ItlMwx::
 attach(IOPCIDevice *device)
 {
+    itl_mwx_print_banner();
+
     /*
      * On OpenBSD the softc comes from a zeroed autoconf allocation; here
      * it is a plain member of an OSObject.  Zero it so every field starts
