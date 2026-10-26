@@ -1,0 +1,11 @@
+# Build products
+build/
+*.kext/
+*.dSYM/
+*.o
+*.d
+*.a
+
+# macOS noise
+.DS_Store
+._*

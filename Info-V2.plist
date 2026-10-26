@@ -1,0 +1,87 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>CFBundleDevelopmentRegion</key>
+	<string>en</string>
+	<key>CFBundleExecutable</key>
+	<string>AirportMtwlm</string>
+	<key>CFBundleIdentifier</key>
+	<string>com.nvme.AirportMtwlm</string>
+	<key>CFBundleInfoDictionaryVersion</key>
+	<string>6.0</string>
+	<key>CFBundleName</key>
+	<string>AirportMtwlm</string>
+	<key>CFBundlePackageType</key>
+	<string>KEXT</string>
+	<key>CFBundleShortVersionString</key>
+	<string>1.0.1</string>
+	<key>CFBundleVersion</key>
+	<string>1.0.1</string>
+	<key>IOKitPersonalities</key>
+	<dict>
+		<!-- Sonoma and later: the controller attaches to the wrapper below,
+		     which owns the PCI device and the HAL service instance. -->
+		<key>NetworkController</key>
+		<dict>
+			<key>CFBundleIdentifier</key>
+			<string>com.nvme.AirportMtwlm</string>
+			<key>IOClass</key>
+			<string>AirportMtwlm</string>
+			<key>IOMatchCategory</key>
+			<string>WiFiDriver</string>
+			<key>IONetworkRootType</key>
+			<string>airport</string>
+			<key>IOProbeScore</key>
+			<integer>70000</integer>
+			<key>IOProviderClass</key>
+			<string>IOPCIEDeviceWrapper</string>
+			<key>IOResourceMatch</key>
+			<string>IOBSD</string>
+		</dict>
+		<!-- MediaTek vendor 0x14c3:
+		     0x0608 MT7921K, 0x0616 RZ616 (MT7922),
+		     0x0717 RZ717,    0x7920 MT7920,
+		     0x7922 MT7922,   0x7925 MT7925,
+		     0x7961 MT7921 -->
+		<key>mtwlm</key>
+		<dict>
+			<key>CFBundleIdentifier</key>
+			<string>com.nvme.AirportMtwlm</string>
+			<key>IOClass</key>
+			<string>IOPCIEDeviceWrapper</string>
+			<key>IOPCIMatch</key>
+			<string>0x060814c3 0x061614c3 0x071714c3 0x792014c3 0x792214c3 0x792514c3 0x796114c3</string>
+			<key>IOProbeScore</key>
+			<integer>70000</integer>
+			<key>IOProviderClass</key>
+			<string>IOPCIDevice</string>
+		</dict>
+	</dict>
+	<key>NSHumanReadableCopyright</key>
+	<string>Copyright © 2026 NVMe. All rights reserved.</string>
+	<key>OSBundleLibraries</key>
+	<dict>
+		<key>com.apple.driver.corecapture</key>
+		<string>1.0.0</string>
+		<key>com.apple.iokit.IO80211Family</key>
+		<string>1.5.0</string>
+		<key>com.apple.iokit.IONetworkingFamily</key>
+		<string>3.2</string>
+		<key>com.apple.iokit.IOPCIFamily</key>
+		<string>2.9</string>
+		<key>com.apple.iokit.IOSkywalkFamily</key>
+		<string>1.0</string>
+		<key>com.apple.kpi.bsd</key>
+		<string>16.7</string>
+		<key>com.apple.kpi.iokit</key>
+		<string>16.7</string>
+		<key>com.apple.kpi.libkern</key>
+		<string>16.7</string>
+		<key>com.apple.kpi.mach</key>
+		<string>16.7</string>
+	</dict>
+	<key>OSBundleRequired</key>
+	<string>Network-Root</string>
+</dict>
+</plist>
