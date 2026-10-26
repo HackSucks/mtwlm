@@ -11,7 +11,7 @@
 
 /* mwx reports RSSI in dBm; Apple's ioctl ABI wants a positive delta
  * from a -100 dBm floor (see mwx_preinit's ic_max_rssi setup). */
-#define	ITLWM_VERSION	"1.0.1 "
+#define	ITLWM_VERSION	"1.0.0 "
 #define	GIT_COMMIT	""
 
 extern IOCommandGate *_fCommandGate;

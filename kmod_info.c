@@ -27,7 +27,7 @@ extern kern_return_t _stop(kmod_info_t *ki, void *data);
 /* Set by the Makefile from VERSION; the fallback keeps a plain
  * `clang kmod_info.c` working. */
 #ifndef MTWLM_KMOD_VERSION
-#define MTWLM_KMOD_VERSION "1.0.1"
+#define MTWLM_KMOD_VERSION "1.0.0"
 #endif
 
 KMOD_EXPLICIT_DECL(com.nvme.AirportMtwlm, MTWLM_KMOD_VERSION, _start, _stop)

@@ -17,7 +17,7 @@
 
 /* Version shown by the driver-version ioctl; the Makefile may override. */
 #ifndef ITLWM_VERSION
-#define ITLWM_VERSION "1.0.1"
+#define ITLWM_VERSION "1.0.0"
 #endif
 #ifndef GIT_COMMIT
 #define GIT_COMMIT ""

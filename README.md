@@ -200,12 +200,17 @@ in both directions.  The classic (Big Sur – Ventura) controller and the
 MT7921/MT7925 code paths compile but have not been exercised on
 hardware by the author.
 
+The station now advertises VHT when the channel supports it and hands
+the firmware the peer's HT/VHT capability records, so an 11ac AP is
+used at its negotiated width (up to 80 MHz) instead of falling back to
+an HT-rate link.  This lives entirely in the shared `hal_mwx/` code, so
+the classic and Sonoma builds behave identically.
+
 Known limitations:
 
-* Throughput is well below the negotiated link rate: roughly
-  25–32 Mbit/s on a 100 Mbit/s 5 GHz link.  TX aggregation (ADDBA) is
-  still disabled and the rate/queue setup follows the simplest path, so
-  this is the next thing to address.
+* TX aggregation (ADDBA/A-MPDU) is still disabled.  VHT and 80 MHz are
+  negotiated, but without aggregation the peak throughput remains below
+  what the link rate suggests; enabling it is the next step.
 * While associated, cache scans requested by `airportd` are refused so
   the radio is never pulled off-channel mid-connection.  The link stays
   stable, but the Wi-Fi menu's network list is not refreshed until the

@@ -30,7 +30,7 @@
 PRODUCT  := AirportMtwlm
 BUNDLE   := $(PRODUCT).kext
 PKGID    := com.nvme.AirportMtwlm
-VERSION  := 1.0.1
+VERSION  := 1.0.0
 
 MKS      ?= ../MacKernelSDK
 ARCH     ?= $(shell uname -m)
